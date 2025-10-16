@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  big-dipper:
+    build: .
+    container_name: big-dipper
+    restart: always
+    environment:
+      - ALPACA_KEY=${ALPACA_KEY}
+      - ALPACA_SECRET=${ALPACA_SECRET}
+      - ALPACA_PAPER=${ALPACA_PAPER:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    env_file:
+      - .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
