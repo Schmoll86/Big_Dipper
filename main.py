@@ -97,7 +97,7 @@ class LittleDipper:
 
         # Log startup
         mode = "PAPER" if config.PAPER else "LIVE"
-        log.info(f"🌙 Little Dipper started in {mode} mode")
+        log.info(f"🌟 Big Dipper v2.16 started in {mode} mode")
         log.info(f"📊 Watching {len(config.SYMBOLS)} symbols: {', '.join(config.SYMBOLS)}")
         default_dip = config.DIP_THRESHOLDS.get('DEFAULT', 0.04)
         dip_range = f"{min(config.DIP_THRESHOLDS.values())*100:.1f}%-{max(config.DIP_THRESHOLDS.values())*100:.1f}%"
