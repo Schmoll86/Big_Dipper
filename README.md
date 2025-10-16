@@ -1,12 +1,17 @@
 # 🌟 Big Dipper
 
-**A fork of Little Dipper with enhanced visibility and operational awareness.**
+**Enhanced visibility fork of [Little Dipper](https://github.com/Schmoll86/Little_Dipper) with operational awareness.**
+
+[![GitHub](https://img.shields.io/badge/GitHub-Big_Dipper-blue?logo=github)](https://github.com/Schmoll86/Big_Dipper)
+[![Forked From](https://img.shields.io/badge/Forked%20From-Little%20Dipper%20v2.15-green)](https://github.com/Schmoll86/Little_Dipper)
+[![Lines of Code](https://img.shields.io/badge/Lines-1271-brightgreen)]()
+[![Files](https://img.shields.io/badge/Files-4-blue)]()
 
 Built on the same proven "buy the dip" strategy with smart risk filters, but adds comprehensive logging and visibility when trading is halted or capital is constrained.
 
-> **Big Dipper v2.16**: Forked from Little Dipper v2.15. ~1,140 lines across 4 files. All the same features PLUS emergency brake visibility, capital exhaustion logging, and utility refactoring for long-term maintainability.
+> **Big Dipper v2.16**: Forked from [Little Dipper v2.15](https://github.com/Schmoll86/Little_Dipper). ~1,271 lines across 4 files. All the same features PLUS emergency brake visibility, capital exhaustion logging, and utility refactoring for long-term maintainability.
 
-> **Forked from Little Dipper Classic (v2.15)**: ~965 lines across 3 files. Maintains pure minimalism.
+> **Little Dipper Classic (v2.15)**: ~965 lines across 3 files. Maintains pure minimalism. [View source →](https://github.com/Schmoll86/Little_Dipper)
 
 ## Key Differences from Little Dipper
 
