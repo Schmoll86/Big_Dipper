@@ -1,6 +1,7 @@
 """
-Little Dipper - Configuration
+Big Dipper - Configuration
 Simple configuration using environment variables and constants.
+Fork of Little Dipper v2.15 with enhanced operational visibility.
 """
 
 import os
@@ -33,9 +34,7 @@ class Config:
     ])
 
     # ===== DIP DETECTION =====
-    # Stock-specific thresholds (target entry points based on volatility)
-    # NOTE: Effective threshold = max(MIN_ABSOLUTE_DIP, stock_threshold)
-    # So stocks with thresholds <5% actually need 5% dip (absolute floor)
+    # Effective threshold = max(MIN_ABSOLUTE_DIP, stock_threshold)
     DIP_THRESHOLDS: dict = field(default_factory=lambda: {
         'DEFAULT': 0.04,        # 4% → effective 5% (overridden by MIN_ABSOLUTE_DIP)
         'MSFT': 0.03, 'LLY': 0.03, 'GLD': 0.03,          # 3% → effective 5%
@@ -52,9 +51,7 @@ class Config:
     BASE_POSITION_PCT: float = 0.025
     MAX_POSITION_PCT: float = 0.15
     DIP_MULTIPLIER: float = 1.75
-    # Absolute minimum dip required (overrides stock-specific thresholds below this)
-    # Prevents threshold gaming (e.g., setting 1% threshold to trigger on minor dips)
-    MIN_ABSOLUTE_DIP: float = 0.05  # 5% floor for ALL stocks
+    MIN_ABSOLUTE_DIP: float = 0.05  # 5% floor (prevents threshold gaming)
 
     # ===== RISK LIMITS =====
     MAX_TOTAL_POSITIONS: int = 10
@@ -71,6 +68,13 @@ class Config:
     COOLDOWN_HOURS: int = 3
     ORDER_TIMEOUT_MINUTES: int = 15
     LIMIT_OFFSET_PCT: float = 0.005
+
+    # ===== INTRADAY VOLATILITY =====
+    VOLATILE_TICKERS: List[str] = field(default_factory=lambda: [
+        'IBIT', 'ARKK', 'KTOS', 'FIGR', 'URNM', 'MP'
+    ])
+    INTRADAY_DROP_THRESHOLD: float = 0.06  # 6% drop triggers 1.5x
+    INTRADAY_MULTIPLIER: float = 1.5
 
     # ===== EXTENDED HOURS =====
     TRADE_EXTENDED_HOURS: bool = True

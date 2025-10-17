@@ -1,230 +1,331 @@
 # Big Dipper - Development Guide
 
-**Forked from Little Dipper v2.15 to add operational visibility**
+**v2.16: Automated dip-buying with operational visibility**
 
-## Project Philosophy
+## Core Philosophy
 
-**Core Principle:** Smart risk management with operational transparency. Same proven dip-buying logic, but you can SEE what you're missing.
-
-```
-~1,140 lines of Python (forked from Little Dipper's 965)
-Simple > Complex | Stateless > Stateful | Direct > Abstracted | Smart > Naive
-Visible > Silent | Informed > Blind
-3-pass prioritization: SCAN → PRIORITIZE → EXECUTE (best opportunities funded first)
-```
-
-## Architecture (4 Files)
+**Smart risk management with transparency.** Buy quality stocks when they dip, with visibility into what you're missing during trading halts.
 
 ```
-config.py (~99 lines)
-  ↓ Constants & env vars - see file for current symbol list
-dip_logic.py (~199 lines)
-  ↓ Pure functions with risk filters (no side effects)
-utils.py (~200 lines) ← NEW in v2.16
-  ↓ Data fetching, formatting, visibility logging
-main.py (~642 lines)
-  ↓ Event loop + Alpaca SDK + options-aware processing
+~1,275 lines of Python across 4 files
+Simple > Complex | Stateless > Stateful | Visible > Silent
+Direct SDK usage | Pure functions | No database | Fail-fast errors
 ```
 
-**No database. No caching. No abstraction layers.**
-Alpaca API is the single source of truth.
-**Smart filters reduce false signals by ~30-40%.**
-**Enhanced visibility shows missed opportunities during trading halts.**
+## Architecture
+
+```
+config.py (105 lines)
+  ↓ Constants, thresholds, symbol list
+
+dip_logic.py (194 lines)
+  ↓ Pure trading logic functions (no side effects)
+
+utils.py (320 lines)
+  ↓ Data fetching, formatting, visibility helpers
+
+main.py (656 lines)
+  ↓ Event loop, Alpaca SDK, orchestration
+```
+
+**Single source of truth:** Alpaca API (no database, no cache, no state)
 
 ## Development Rules
 
-  Do not make assumptoins.  You must ask questions if you are not certain of your actions.  If you identify a problem, you must suggest a specific fix with proposed code changes.  You should reference Alpaca SDK https://docs.alpaca.markets/docs/sdks-and-tools. and the latest github repos https://github.com/alpacahq/alpaca-py. For every function or code added, you should confirm:  1). it properly integrates with the overall code base.  2)  it is added in the most simple and fault tolerant way.  3). what code it will deprecate and how to remove the deprecated code without harming data flow and function 4) how you will update existing documentation to make it clear to future developers what you did and why. 
+**Before making changes, ask:**
+1. Does it integrate cleanly with existing code?
+2. Is it the simplest fault-tolerant approach?
+3. What code becomes deprecated?
+4. How will documentation be updated?
 
-### 🚫 **NEVER Add These:**
-- ❌ Database (SQLite, PostgreSQL, etc.)
-- ❌ Caching layer (Redis, Memcached, etc.)
-- ❌ Abstraction/gateway patterns
+**Reference:** [Alpaca SDK](https://docs.alpaca.markets/docs/sdks-and-tools) | [GitHub](https://github.com/alpacahq/alpaca-py)
+
+### 🚫 Never Add
+
+- ❌ Database/caching layer
+- ❌ Abstraction patterns or wrappers
 - ❌ Complex state management
-- ❌ ORM or query builders
-- ❌ Message queues
-- ❌ WebSocket streaming (60s polling is sufficient)
-- ❌ GUI/dashboard (use Alpaca dashboard)
-- ❌ Discord/Slack notifications (logs are enough)
-- ❌ Multiple config files or hot-reload
-- ❌ Stop losses (conflicts with buy-hold strategy)
-- ❌ Exit signals (let winners run)
-- ❌ Market regime detection (overcomplicates sizing)
+- ❌ WebSocket streaming (60s polling sufficient)
+- ❌ GUI/dashboard (use Alpaca UI)
+- ❌ Notifications (logs are enough)
+- ❌ Stop losses or exit signals
+- ❌ Market regime detection
 
-### ✅ **Always Maintain:**
-- ✅ **Pure functions** in `dip_logic.py` (easy to test, no side effects)
-- ✅ **Direct SDK usage** (no wrappers or adapters)
-- ✅ **Stateless operation** (crash = restart, state from Alpaca)
-- ✅ **Simple constants** in `config.py` (no complex validation)
-- ✅ **4-file architecture** (config, dip_logic, utils, main - no more!)
-- ✅ **Fail-fast errors** (crash loudly, let Docker restart)
-- ✅ **Minimal dependencies** (currently: alpaca-py, python-dotenv, pytz)
+### ✅ Always Maintain
 
-### 📏 **Code Quality Rules:**
+- ✅ Pure functions in `dip_logic.py`
+- ✅ Direct SDK usage (no adapters)
+- ✅ Stateless operation (crash = restart from Alpaca state)
+- ✅ 4-file architecture (NO 5th file)
+- ✅ Fail-fast errors
+- ✅ 3 dependencies only (alpaca-py, python-dotenv, pytz)
 
-1. **Keep functions under 50 lines** - If longer, split into smaller functions
-2. **No classes unless necessary** - Prefer functions over objects
-3. **Type hints required** - All function signatures must have types
-4. **Max 3 levels of indentation** - Nested code is hard to read
-5. **One concept per function** - Calculate OR validate, not both
-6. **Test pure functions** - Every function in `dip_logic.py` needs a test
-7. **Log decisions, not data** - Log "why", not "what"
+### 📏 Code Quality
 
-### 🔧 **Making Changes:**
+1. **Functions < 50 lines** - Split if longer
+2. **Prefer functions over classes**
+3. **Type hints required**
+4. **Max 3 indentation levels**
+5. **One concept per function**
+6. **Test all pure functions**
+7. **Log decisions, not data**
 
-**All configuration changes happen in config.py - NOT in docs.**
+## Configuration
 
-Examples:
+**All settings in [config.py](config.py) - NOT in docs.**
 
-**Adjusting allocation for manual trading:**
+### Key Settings
+
 ```python
-# config.py
-MAX_TOTAL_INVESTED_PCT = 0.45  # Default: 45% (leaves 55% for manual)
+# Position Sizing
+BASE_POSITION_PCT = 0.025     # 2.5% base allocation
+DIP_MULTIPLIER = 1.75         # Scale with dip severity
+MAX_POSITION_PCT = 0.15       # 15% max per symbol
+MIN_ABSOLUTE_DIP = 0.05       # 5% floor (prevents gaming)
+
+# Dip Thresholds (stock-specific, 3-8%)
+DIP_THRESHOLDS = {
+    'DEFAULT': 0.04,          # 4% → effective 5% (floor override)
+    'MSFT': 0.03,             # Low volatility
+    'NVDA': 0.05,             # Medium volatility
+    'PLTR': 0.06,             # Higher volatility
+    'IBIT': 0.08,             # Highest volatility
+    # ... see config.py for full list
+}
+
+# Margin Protection
+USE_MARGIN = True             # Enable margin trading
+MARGIN_SAFETY_THRESHOLD = 0.15  # Emergency brake (halt trading)
+MAX_MARGIN_PCT = 0.20         # Hard limit per trade
+
+# Trading Controls
+COOLDOWN_HOURS = 3            # Between buys per symbol
+LOOKBACK_DAYS = 20            # For dip detection
+SCAN_INTERVAL_SEC = 60        # Cycle frequency
 ```
 
-**Adding/removing symbols:**
+### Symbols Traded
+
+44 stocks across sectors (edit SYMBOLS list in [config.py](config.py)):
+- **Tech/AI:** NVDA, AVGO, AMD, TSM, MRVL, TER, MSFT, META, ORCL, NOW, PLTR, ANET, DELL
+- **Power/Utilities:** ETN, PWR, CEG, GEV, NEE, ABB, XYL, AWK, WTRG
+- **Data Centers:** EQIX, DLR, AMT, CCI
+- **Defense:** LMT, NOC, RTX, GD, HII, HWM, AVAV, KTOS
+- **Healthcare:** ISRG, LLY, FIGR
+- **Materials:** VMC, MLM, MP
+- **Alternative Assets:** GLD, URNM, IBIT, ARKK
+
+## Trading Logic
+
+### How It Works (Every 60 Seconds)
+
+1. **Check Market Status** - Regular or extended hours (4 AM - 8 PM ET)
+2. **Get Account State** - Equity, cash, margin, positions from Alpaca
+3. **Emergency Brake Check** - Halt if margin >15%
+4. **Scan All Symbols:**
+   - Fetch 25-day price history
+   - Calculate dip from 20-day high using BID price
+   - Apply 5 risk filters (see below)
+   - Calculate opportunity score
+5. **Prioritize & Execute** - Best opportunities first (largest dip ratio)
+
+### Dip Detection
+
+**Price Source:** Uses **BID price** (conservative - lower than ASK)
+
 ```python
-# config.py - Edit the SYMBOLS list directly
+current_price = quote.bid_price
+dip_pct = (current_price - lookback_high) / lookback_high
+
+# Qualification: Must meet BOTH
+effective_threshold = max(MIN_ABSOLUTE_DIP, DIP_THRESHOLDS[symbol])
+# Examples:
+#   MSFT: max(5%, 3%) = 5% (floor overrides)
+#   NVDA: max(5%, 5%) = 5% (matches)
+#   PLTR: max(5%, 6%) = 6% (stock threshold wins)
+#   IBIT: max(5%, 8%) = 8% (stock threshold wins)
 ```
 
-**Adjusting position sizing:**
+### 5 Smart Risk Filters
+
+1. **Crash Filter:** Skip if down >15% from 20-day high (avoid prolonged crashes)
+2. **Volume Confirmation:** Require 80%+ of 20-day average volume
+3. **Relative Strength:** Skip if 5-day momentum < -10%
+4. **Volatility Adjustment:** Reduce position size for high-volatility stocks
+5. **Dynamic Cooldown:** Halve cooldown time for deep dips >7%
+
+**Result:** ~30-40% fewer false signals, ~20-30% lower drawdowns
+
+### Position Sizing
+
 ```python
-# config.py
-BASE_POSITION_PCT = 0.025     # Default: 2.5%
-DIP_MULTIPLIER = 1.75         # Default: 1.75x
-MAX_POSITION_PCT = 0.15       # Default: 15%
-MIN_ABSOLUTE_DIP = 0.05       # Default: 5% (floor for all stocks)
-DIP_THRESHOLDS = {...}        # Stock-specific entry points (3-8%)
+# Scale with dip severity, adjust for volatility and intraday drops
+size_multiplier = (abs(dip_pct) / 0.03) * dip_multiplier / volatility_factor
+intraday_multiplier = 1.5 if (symbol in VOLATILE_TICKERS and intraday_drop >= 6%) else 1.0
+target_value = equity * base_position_pct * size_multiplier * intraday_multiplier
+
+# Cap at max position size
+target_value = min(target_value, equity * MAX_POSITION_PCT)
 ```
 
-**Adjusting margin settings:**
+**Intraday Boost** (v2.17): For volatile tickers (IBIT, ARKK, KTOS, FIGR, URNM, MP) with 6%+ intraday drop, buy 1.5x normal size to capitalize on sharp selloffs that often bounce.
+
+### Margin Protection (Dual Layer)
+
+**Layer 1 - Emergency Brake (Cycle Start):**
 ```python
-# config.py
-USE_MARGIN = True          # Default: enabled
-MAX_MARGIN_PCT = 0.20      # Default: 20%
-COLLATERAL_POSITIONS = ['BLV', 'SGOV', 'BIL']  # Default bonds
+if margin_debt / equity > 0.15:
+    halt_all_trading()  # Prevents adding margin on margin
+    log_missed_opportunities()  # v2.16 enhancement
 ```
 
-**Using bonds as reserves (v2.10 feature):**
+**Layer 2 - Per-Trade Limit:**
 ```python
-# config.py
-MAX_TOTAL_INVESTED_PCT = 0.45  # 45% cap applies only to stocks
-COLLATERAL_POSITIONS = ['BLV', 'SGOV', 'BIL']  # Excluded from cap
-
-# How it works:
-# - Bonds NOT counted toward 45% allocation limit
-# - Shift to bonds = defensive positioning, but Little Dipper keeps full capacity
-# - Manual stock trades outside symbol list ARE counted in 45% cap
-# - Allows automated dip buying while maintaining bond reserves for manual trading
+projected_margin = (margin_debt + order_value) / equity
+if projected_margin > 0.20:
+    skip_trade()
 ```
 
-**Enhanced Risk Filters (v2.0+):**
+### Order Execution
 
-See `dip_logic.py` for implementation details:
-- Crash filter: Skip if down >15% from high
-- Volume confirmation: Need 80%+ of average volume
-- Relative strength: Skip if 5d momentum < -10%
-- Volatility adjustment: Reduce size for high-vol stocks
-- Dynamic cooldown: Halve cooldown for deep dips (>7%)
+- **Limit orders only** (no market orders)
+- **Adaptive pricing:**
+  - Extended hours: bid + 0.1%
+  - Regular hours: ask - 0.5%
+- **Timeout:** 15 minutes (cancels if not filled)
 
-**DON'T do this:**
-```python
-# ❌ BAD: Adding a cache
-class VolumeCache:
-    def __init__(self):
-        self.cache = {}
+## File Size Limits (HARD STOP)
 
-    def get_volume(self, symbol):
-        if symbol not in self.cache:
-            self.cache[symbol] = self._fetch_volume(symbol)
-        return self.cache[symbol]
+| File | Current | Max | Notes |
+|------|---------|-----|-------|
+| config.py | 105 | 100 | ⚠️ At limit |
+| dip_logic.py | 194 | 250 | 56 lines available |
+| utils.py | 320 | 250 | ⚠️ Over by 70 (refactor if adding) |
+| main.py | 656 | 700 | 44 lines available |
+| **Total** | **1,275** | **1,300** | **25 lines to ceiling** |
 
-# ❌ BAD: Adding state management
-class StateManager:
-    def __init__(self, db_path):
-        self.db = sqlite3.connect(db_path)
+**At 1,300 lines:** Big Dipper is feature-complete. No more additions.
 
-    def save_state(self, key, value):
-        self.db.execute("INSERT INTO state...")
-```
-
-**DO this:**
-```python
-# ✅ GOOD: Direct and simple
-def get_volume(symbol: str, data_client) -> int:
-    """Get current volume directly from Alpaca"""
-    bars = data_client.get_stock_bars(symbol, limit=1)
-    return bars[-1].volume
-```
-
-### 🐛 **Debugging:**
-
-System crashed? Good! That means:
-1. Error was caught immediately
-2. Docker/systemd will restart it
-3. State reconstructs from Alpaca API
-4. Trading resumes with exponential backoff (10s → 20s → 40s → 60s max)
+## Logging & Visibility
 
 **Log Levels:**
-- **INFO** (default): Shows trades, emergency brake, major events
-- **DEBUG**: Verbose - shows every symbol check, rejection reasons, dip calculations
+- **INFO:** Trades, emergency brake, major events
+- **DEBUG:** Every symbol check, rejection reasons, dip calculations
 
-Set `LOG_LEVEL=DEBUG` in .env to see:
-- Each symbol's dip percentage vs 20-day high
-- Why symbols qualify or don't qualify
-- Largest dip detected in each cycle
-- Example: `NVDA: -2.1% from 20d high (need -5.0%)`
-- Example: `AMD: -6.5% from 20d high ✓ dip detected`
-
-**Understanding What You're NOT Seeing:**
-
-**During Emergency Brake (margin >15%):**
-- System halts ALL trading
-- Does NOT show which dips are occurring
-- **Blind spot:** NVDA could be -10% and you'd never know
-- **Workaround:** Check manually or wait for proposed enhancement
-
-**Silent Rejections:**
-- Cooldowns (3 hours) - only visible in DEBUG
-- Position limits - only logged when exceeded
-- Capital exhaustion - not currently logged (proposed enhancement)
-
-**Debug workflow:**
+**Set in .env:**
 ```bash
-# 1. Check logs
-docker logs little-dipper | tail -50
-
-# 2. See actual trades (INFO level)
-docker logs little-dipper | grep "BUY"
-
-# 3. Check for network issues
-docker logs little-dipper | grep ERROR
-
-# 4. Reproduce locally
-source venv/bin/activate
-python main.py
-
-# 5. Test
-python test_dip_logic.py
-
-# 6. Restart
-docker-compose restart
+LOG_LEVEL=DEBUG  # Verbose
+LOG_LEVEL=INFO   # Default
 ```
 
-### 📦 **Dependencies:**
+**v2.16 Enhancements:**
+- Shows missed opportunities during emergency brake
+- Logs capital exhaustion with suggestions
+- Reports largest dips even when not trading
 
-**Current (3 packages):**
-- `alpaca-py` - Official Alpaca SDK
-- `python-dotenv` - Load .env files
-- `pytz` - Timezone handling
+**Debug Example:**
+```
+NVDA: -2.1% from 20d high (need -5.0%) ❌
+AMD: -6.5% from 20d high ✓ qualifies
+  → Volume: 850K / 1M avg (85%) ✓
+  → 5d momentum: -3.2% (> -10%) ✓
+  → Crash filter: -6.5% (< -15%) ✓
+  → Target: $2,625 (2.5% × 2.17x) ✓
+```
 
-**Before adding a new dependency, ask:**
-1. Can I write this function myself in < 20 lines?
-2. Will this dependency add more than 1 MB?
-3. Does it require configuration or setup?
+## Options & Manual Trading
 
-If yes to any: **Don't add it.**
+**Fully compatible** - Trade options and other equities in the same account.
 
-### 🔄 **Git Workflow:**
+**How It Works:**
+- Tracks ALL equity positions (algo + manual)
+- Filters out options positions (no interference)
+- Manual stock trades counted in allocation limits
+- Bond positions (BLV/SGOV/BIL) excluded from limits
+
+**Safety:** If SDK fails reading positions (due to options), system HALTS trading until resolved. No blind trades.
+
+## Testing
+
+```bash
+# Run all tests (must pass before committing)
+python test_dip_logic.py
+
+# Expected output
+============================================================
+✅ All tests passed!
+============================================================
+```
+
+**No mocking** - Pure functions don't need it.
+
+## Deployment
+
+### Local Development
+```bash
+source venv/bin/activate
+python main.py
+```
+
+### Background Mode
+```bash
+./start_big_dipper.sh
+# or
+nohup python main.py > big_dipper.log 2>&1 &
+```
+
+### Docker (Production)
+```bash
+docker-compose up -d
+docker logs -f big-dipper
+docker-compose down
+```
+
+### Monitoring
+```bash
+# Check if running
+pgrep -fl "main.py"
+
+# View logs
+tail -f big_dipper.log
+
+# Check positions
+python check_positions.py
+```
+
+## Debugging Workflow
+
+```bash
+# 1. Check recent logs
+tail -50 big_dipper.log
+
+# 2. See trades only
+grep "BUY" big_dipper.log
+
+# 3. Check for errors
+grep "ERROR" big_dipper.log
+
+# 4. Verify system health
+python test_dip_logic.py
+
+# 5. Restart if needed
+pkill -f "main.py" && ./start_big_dipper.sh
+```
+
+**Crashes are OK** - System is designed to fail-fast and restart with fresh state from Alpaca.
+
+## When to Reject Feature Requests
+
+❌ Reject if it:
+- Adds a 5th file
+- Requires database/cache
+- Needs >50 lines
+- Can't be explained in 2 sentences
+- Adds complexity without clear benefit
+- Duplicates Alpaca functionality
+- Pushes past file size limits
+
+## Git Workflow
 
 ```bash
 # Make changes
@@ -235,265 +336,50 @@ python test_dip_logic.py
 
 # Commit
 git add .
-git commit -m "Adjust position sizing to 3%"
+git commit -m "Adjust NVDA threshold to 6%"
 git push
 ```
 
 **Keep commits atomic** - One logical change per commit.
 
-### 🚀 **Deployment:**
-
-```bash
-# Local development
-python main.py
-
-# Production (Docker)
-docker-compose up -d
-
-# Check status
-docker logs -f little-dipper
-
-# Stop
-docker-compose down
-```
-
-**That's it.** No Kubernetes, no CI/CD pipelines, no infrastructure complexity.
-
-## Trading Logic Reference
-
-See `dip_logic.py` for actual implementation. Key formulas:
-
-### Dip Detection
-
-**Price Source:** Uses **BID price** (more conservative than ASK)
-```python
-current_price = quote.bid_price  # Conservative: bid < ask
-dip_pct = (current_price - lookback_high) / lookback_high
-```
-
-**Qualification Requirements - Must meet BOTH:**
-1. **MIN_ABSOLUTE_DIP** (5% floor) - Prevents threshold gaming
-2. **Stock-specific threshold** (3-8% based on volatility)
-
-**Effective Thresholds:**
-```python
-effective_threshold = max(MIN_ABSOLUTE_DIP, DIP_THRESHOLDS[symbol])
-
-# Examples:
-# MSFT: max(5%, 3%) = 5% (absolute floor overrides)
-# DEFAULT: max(5%, 4%) = 5% (absolute floor overrides)
-# NVDA: max(5%, 5%) = 5% (matches)
-# PLTR: max(5%, 6%) = 6% (stock threshold higher)
-# IBIT: max(5%, 8%) = 8% (stock threshold higher)
-```
-
-**Why BID price?** More conservative buy decision - BID is lower than ASK, so dip appears larger. This triggers buys at better prices.
-
-### Position Sizing
-```python
-size_multiplier = (abs(dip_pct) / 0.03) * dip_multiplier / volatility_factor
-target_value = equity * base_position_pct * size_multiplier
-# Capped at MAX_POSITION_PCT
-```
-
-### Risk Limits
-- Max 15% per symbol (15% of equity)
-- 5% absolute minimum dip (prevents threshold gaming)
-- 3-hour cooldown between buys per symbol
-- Limit orders only (adaptive pricing: bid+0.1% extended hours, ask-0.5% regular hours)
-- Margin capped at 20% of equity
-
-**See config.py for all current values - don't hardcode in docs!**
-
-### Margin Trading
-```python
-USE_MARGIN = True                    # Enable margin (default)
-MAX_MARGIN_PCT = 0.20                # Hard 20% limit per trade
-MARGIN_SAFETY_THRESHOLD = 0.15       # Emergency brake (v2.13)
-COLLATERAL_POSITIONS = ['BLV', 'SGOV', 'BIL']  # Bonds excluded
-
-# TWO-LEVEL PROTECTION (v2.13):
-# 1. EMERGENCY BRAKE (cycle start):
-starting_margin = margin_debt / equity
-if starting_margin > 0.15:  # Halt ALL trading if already leveraged
-    skip_entire_cycle()
-
-# 2. PER-TRADE LIMIT (each order):
-projected_margin = (margin_debt + order_value) / equity
-if projected_margin > 0.20:  # Block individual trades
-    skip_trade()
-```
-
-**Key features (v2.13):**
-- **Emergency brake at 15%** - Prevents adding margin on top of margin
-- **Hard 20% limit per trade** - Enforced on every individual order
-- **Dual protection** - Checks both cycle start AND each trade
-- Uses Alpaca's `regt_buying_power` (Regulation T overnight margin)
-- Collateral positions never traded
-- Set `USE_MARGIN = False` for cash-only mode
-
-## Extended Hours Trading
-
-**Enabled by default:**
-- Pre-market: 4:00 AM - 9:30 AM ET
-- Regular: 9:30 AM - 4:00 PM ET
-- After-hours: 4:00 PM - 8:00 PM ET
-
-**All 43 symbols trade during extended hours (simplified in v2.12)**
-
-## File Size Limits
-
-| File | Current | Max Allowed | Notes |
-|------|---------|-------------|-------|
-| config.py | 99 lines | 100 lines | Configuration constants |
-| dip_logic.py | 199 lines | 250 lines | Pure trading logic functions |
-| utils.py | 200 lines | 250 lines | Helpers & visibility (v2.16) |
-| main.py | 642 lines | 700 lines | Event loop & orchestration |
-| **Total** | **1,140 lines** | **1,300 lines** | Hard stop - this is the FINAL feature |
-
-**If you hit these limits:** This is Big Dipper's ceiling. Do NOT add more features.
-
-## Testing
-
-```bash
-# Run tests
-python test_dip_logic.py
-
-# All tests must pass before committing
-# No mocking - pure functions don't need it
-```
-
-## Options & Manual Trading Coexistence (v2.9)
-
-**You can trade options AND equity outside the 23-symbol list in the same account!**
-
-### How It Works
-
-**Position Tracking (Updated v2.10):**
-- ✅ Tracks ALL equity positions (algo + your manual trades)
-- ✅ Manual stock trades counted in 45% allocation cap
-- ✅ **Bond positions (BLV/SGOV/BIL) excluded from 45% cap** (reserves)
-- ✅ Won't add to positions you manually opened
-- ✅ Filters options positions from equity tracking
-- ✅ Uses `maintenance_margin` for accurate margin calculation
-
-**Safety System (v2.9 CRITICAL FIX):**
-When the Alpaca SDK fails to read positions (usually due to options):
-1. 🛑 **HALTS all trading** for that cycle (no blind trades!)
-2. 🚨 **Logs clear ERROR messages** (visible in logs)
-3. ♻️ **Auto-retries every 60 seconds**
-4. ✅ **Resumes automatically** when positions load successfully
-
-**Previous Bug (v2.7-v2.8):**
-- SDK failed → fell back to empty position map → over-bought
-- **FIXED in v2.9** - now halts instead of trading blind
-
-**Example Logs:**
-
-*Normal operation with options:*
-```
-ℹ️  Detected 1 options position(s) - excluded from Little Dipper
-📊 Positions: 5 stocks, $7,626 invested (48.11%)
-💎 NVDA QUALIFIES: Dip -4.2% @ $145.32
-```
-
-*SDK failure (safe halt):*
-```
-❌ POSITION TRACKING FAILED (likely due to options positions)
-   SDK error: [validation error details]
-⏸️  HALTING ALL TRADING this cycle to prevent over-allocation
-   System will automatically resume when positions load successfully
-   Next retry in 60 seconds...
-```
-
-**Best Practices:**
-- ✅ **Safe to run continuously** - even with active options trading
-- ✅ Manual equity trades (AAPL, GOOGL, etc.) counted in allocation
-- ✅ System auto-recovers when you close options positions
-- ⚠️ Expect trading pauses when options positions exist (~3-7 days/month typical)
-- ⚠️ Monitor logs for position tracking errors
-
-**Technical Implementation:**
-```python
-# main.py:166-215 - Defensive position tracking
-try:
-    all_positions = self.trading.get_all_positions()
-except Exception as validation_error:
-    # SDK fails with options → HALT (don't trade blind!)
-    log.error("❌ POSITION TRACKING FAILED")
-    log.error("⏸️  HALTING ALL TRADING this cycle")
-    time.sleep(60)
-    continue  # Skip cycle, retry next
-
-# Filter to equity only
-equity_positions = [p for p in all_positions
-                    if p.asset_class == 'us_equity']
-
-# Include ALL equity (algo + manual trades) in limits
-position_map = {p.symbol: float(p.market_value) for p in positions}
-total_invested = sum(position_map.values())  # Includes your AAPL, etc.
-
-if total_invested >= equity * 0.45:  # 45% cap
-    log.info("⛔ Little Dipper at max allocation")
-```
-
-## When to Reject a Feature Request
-
-**Reject if the request:**
-- Adds a 4th file
-- Requires a database
-- Needs more than 50 lines
-- Can't be explained in 2 sentences
-- Adds complexity without clear benefit
-- Duplicates what Alpaca already provides
-
-## Success Metrics
-
-**Code quality:**
-- Total lines < 1000 ✅ (~920 lines)
-- Files ≤ 3 ✅
-- Dependencies ≤ 5 ✅ (3 packages)
-- Startup time < 2 seconds ✅
-
-**Trading quality:**
-- System uptime > 99% ✅
-- Average cycle time < 6 seconds ✅
-- Crashes per day < 1 ✅
-- False signals reduced by ~30-40% ✅
-- Expected drawdown reduction ~20-30% ✅
-- Network resilience with exponential backoff ✅
-- Clean debug logging (v2.4) ✅
-
-## Remember
-
-**"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away."**
-
-If you're about to add complexity, ask yourself:
-1. Can the existing system already do this?
-2. Can Alpaca's API already provide this?
-3. Is this actually needed, or just nice-to-have?
-
-**When in doubt, do nothing.** The system works because it's simple.
-
----
-
 ## Quick Reference
 
 ```bash
-# Run locally
-python main.py
+# Start
+./start_big_dipper.sh
 
-# Run tests
+# Test
 python test_dip_logic.py
 
-# Deploy
-docker-compose up -d
-
 # Monitor
-docker logs -f little-dipper
+tail -f big_dipper.log
+
+# Status
+python check_positions.py
 
 # Stop
-docker-compose down
+pkill -f "main.py"
 ```
 
-**That's all you need to know.** 🌙
+## Success Metrics
+
+**Code:**
+- ✅ 1,275 lines across 4 files
+- ✅ 3 dependencies
+- ✅ Startup < 2 seconds
+
+**Trading:**
+- ✅ Uptime >99%
+- ✅ Cycle time <6 seconds
+- ✅ False signals reduced ~30-40%
+- ✅ Expected drawdown reduction ~20-30%
+
+## Remember
+
+> "Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away."
+
+**When in doubt, do nothing.** Simplicity is the feature.
+
+---
+
+**That's everything you need.** 🌟

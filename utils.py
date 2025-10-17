@@ -41,17 +41,7 @@ def format_percent(value: float) -> str:
 # ============================================================================
 
 def calculate_opportunity_score(dip_pct: float, threshold: float) -> float:
-    """
-    Calculate opportunity score: how much the dip exceeds threshold.
-
-    Args:
-        dip_pct: Negative percentage (e.g., -0.0836 for -8.36%)
-        threshold: Required dip threshold (e.g., 0.05 for 5%)
-
-    Returns:
-        Score >= 1.0, higher = better opportunity
-        Example: -8.36% dip with 5% threshold = 1.67x score
-    """
+    """Calculate opportunity score (abs(dip_pct) / threshold). Higher = better opportunity."""
     if threshold <= 0:
         return 1.0
     return abs(dip_pct) / threshold
@@ -66,18 +56,7 @@ def get_bars(
     days: int,
     data_client: StockHistoricalDataClient
 ) -> Optional[List[Dict]]:
-    """
-    Get historical bars for symbol.
-
-    Args:
-        symbol: Stock symbol (e.g., 'AAPL')
-        days: Number of days of history to fetch
-        data_client: Alpaca data client instance
-
-    Returns:
-        List of bar dicts with OHLCV data, or None if failed
-        Each dict has: timestamp, open, high, low, close, volume
-    """
+    """Get historical bars (OHLCV dicts) for symbol, or None if failed."""
     try:
         # Request extra calendar days to ensure we get enough trading days
         # 20 trading days ≈ 30 calendar days (weekends + holidays)
@@ -120,17 +99,7 @@ def get_current_price(
     data_client: StockHistoricalDataClient,
     use_bid: bool = True
 ) -> Optional[float]:
-    """
-    Get current price from latest quote.
-
-    Args:
-        symbol: Stock symbol (e.g., 'AAPL')
-        data_client: Alpaca data client instance
-        use_bid: If True, use bid price (conservative). Otherwise ask.
-
-    Returns:
-        Current price (bid or ask), or None if failed
-    """
+    """Get current bid or ask price from latest quote, or None if failed."""
     try:
         quote_request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
         quote_response = data_client.get_stock_latest_quote(quote_request)
@@ -166,26 +135,7 @@ def scan_opportunities_during_brake(
     min_absolute_dip: float,
     get_dip_threshold_func
 ) -> List[Dict]:
-    """
-    Scan all symbols for opportunities during emergency brake.
-
-    This is a simplified scan - only checks if dips qualify.
-    Does NOT check cooldowns, positions, or place orders.
-
-    Args:
-        symbols: List of symbols to scan
-        data_client: Alpaca data client
-        lookback_days: Days to look back for high
-        min_absolute_dip: Minimum dip regardless of threshold (e.g., 0.05)
-        get_dip_threshold_func: Function to get per-symbol threshold
-
-    Returns:
-        List of opportunity dicts, each containing:
-        - symbol: Stock symbol
-        - dip_pct: Current dip percentage (negative)
-        - threshold: Symbol's configured threshold
-        - current_price: Current bid price
-    """
+    """Scan symbols for qualifying dips during brake (no position checks or orders)."""
     from dip_logic import calculate_dip  # Import here to avoid circular
 
     opportunities = []
@@ -234,17 +184,7 @@ def log_brake_status(
     missed_opportunities: List[Dict],
     brake_cycle_count: int
 ) -> None:
-    """
-    Log comprehensive emergency brake status with actionable information.
-
-    Args:
-        margin_ratio: Current margin ratio (e.g., 0.1838)
-        margin_debt: Current margin debt in dollars
-        equity: Account equity in dollars
-        target_threshold: Target margin threshold (e.g., 0.15)
-        missed_opportunities: List from scan_opportunities_during_brake()
-        brake_cycle_count: Number of consecutive brake cycles
-    """
+    """Log emergency brake status with missed opportunities and reduction guidance."""
     # Calculate how much to liquidate
     target_debt = equity * target_threshold
     reduction_needed = max(0, margin_debt - target_debt)
@@ -280,6 +220,31 @@ def log_brake_status(
 
 
 # ============================================================================
+# INTRADAY VOLATILITY DETECTION
+# ============================================================================
+
+def calculate_intraday_drop(bars: List[Dict]) -> Optional[float]:
+    """Calculate today's drop from open (negative % if down, None otherwise)."""
+    if not bars or len(bars) < 1:
+        return None
+
+    try:
+        today_bar = bars[-1]  # Most recent bar (today)
+        open_price = today_bar['open']
+        close_price = today_bar['close']
+
+        if open_price <= 0:
+            return None
+
+        intraday_pct = (close_price - open_price) / open_price
+
+        return intraday_pct if intraday_pct < 0 else None  # Only return if down
+
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+# ============================================================================
 # CAPITAL EXHAUSTION VISIBILITY
 # ============================================================================
 
@@ -288,16 +253,7 @@ def log_capital_exhaustion(
     deployed_this_cycle: float,
     max_margin_pct: float
 ) -> None:
-    """
-    Log opportunities skipped due to capital/margin limits.
-
-    Only logs if opportunities were actually skipped.
-
-    Args:
-        skipped_opportunities: List of opportunity dicts that were skipped
-        deployed_this_cycle: Dollar amount already deployed this cycle
-        max_margin_pct: Current MAX_MARGIN_PCT setting (e.g., 0.20)
-    """
+    """Log opportunities skipped due to capital/margin limits (if any)."""
     if not skipped_opportunities:
         return
 

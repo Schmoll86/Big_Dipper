@@ -100,21 +100,21 @@ def calculate_shares(
     max_pct: float,
     dip_multiplier: float,
     fractional: bool = True,
-    volatility_factor: float = 1.0  # New: volatility adjustment
+    volatility_factor: float = 1.0,
+    intraday_multiplier: float = 1.0  # New: intraday drop multiplier
 ) -> float:
     """
-    Calculate shares to buy: bigger dip = bigger position, adjusted for volatility.
+    Calculate shares to buy: bigger dip = bigger position, adjusted for volatility and intraday drops.
 
-    Linear scaling formula with volatility adjustment:
-        size = base_pct * (abs(dip_pct) / 0.03) * dip_multiplier * (1 / volatility_factor)
+    Linear scaling formula with volatility and intraday adjustments:
+        size = base_pct * (abs(dip_pct) / 0.03) * dip_multiplier * (1 / volatility_factor) * intraday_multiplier
 
-    Examples (with base_pct=0.02, dip_multiplier=2.0):
-        3% dip, normal vol → 2% * (0.03/0.03) * 2.0 * 1.0 = 4% position
-        6% dip, normal vol → 2% * (0.06/0.03) * 2.0 * 1.0 = 8% position
-        6% dip, high vol (1.5x) → 2% * (0.06/0.03) * 2.0 * 0.67 = 5.3% position
+    Examples (with base_pct=0.025, dip_multiplier=1.75):
+        6% dip, normal vol, no intraday → 2.5% * 2.0 * 1.75 * 1.0 * 1.0 = 8.75% position
+        6% dip, normal vol, 6% intraday drop → 2.5% * 2.0 * 1.75 * 1.0 * 1.5 = 13.125% position
 
     Args:
-        dip_pct: Dip percentage (negative)
+        dip_pct: Dip percentage from 20-day high (negative)
         current_price: Stock price
         equity: Account equity
         current_position_value: Current position value
@@ -122,7 +122,8 @@ def calculate_shares(
         max_pct: Maximum position size as % of equity
         dip_multiplier: Multiplier for dip sizing
         fractional: Allow fractional shares
-        volatility_factor: Stock's volatility relative to normal (new)
+        volatility_factor: Stock's volatility relative to normal
+        intraday_multiplier: Multiplier for sharp intraday drops (e.g., 1.5 = 50% more)
 
     Returns:
         Number of shares to buy
@@ -130,13 +131,16 @@ def calculate_shares(
     # Calculate size multiplier based on dip severity
     dip_ratio = abs(dip_pct) / 0.03  # Normalize to 3% baseline
     size_multiplier = dip_ratio * dip_multiplier
-    
+
     # Apply volatility adjustment - reduce size for high-volatility stocks
     safe_vol_factor = max(0.5, min(2.0, volatility_factor)) if volatility_factor > 0 else 1.0
     vol_adjusted_multiplier = size_multiplier / safe_vol_factor
 
+    # Apply intraday multiplier (increase size for sharp drops today)
+    final_multiplier = vol_adjusted_multiplier * intraday_multiplier
+
     # Calculate target position value
-    target_value = equity * base_pct * vol_adjusted_multiplier
+    target_value = equity * base_pct * final_multiplier
 
     # Cap at maximum position size
     max_value = equity * max_pct

@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """
-Little Dipper - Simplified Buy The Dip Trading System
+Big Dipper - Simplified Buy The Dip Trading System
 
-A radically simplified version that does one thing well:
-Buy stocks when they dip significantly from their recent highs.
+Forked from Little Dipper v2.15 with enhanced operational visibility.
+
+Does one thing well: Buy stocks when they dip significantly from recent highs.
+New in v2.16: See what you're missing during trading halts.
 
 Philosophy:
 - Alpaca API is the single source of truth (no database)
 - Every cycle recalculates from scratch (stateless)
 - Fail fast and restart (systemd/docker)
 - Simple is better than complex
+- Visible is better than silent
 
-Author: Simplified from complex system
+Author: Enhanced from Little Dipper v2.15
 """
 
 import time
@@ -415,10 +418,19 @@ class LittleDipper:
             avg_daily_range = sum(recent_ranges) / len(recent_ranges) if recent_ranges else 0.02
             volatility_factor = avg_daily_range / 0.02  # Normalize to 2% baseline
 
-            # Calculate dip
+            # Calculate dip from 20-day high
             dip_pct = calculate_dip(current_price, bars, config.LOOKBACK_DAYS)
             if dip_pct is None:
                 return None
+
+            # Calculate intraday drop (for volatile tickers only)
+            intraday_multiplier = 1.0
+            intraday_drop_pct = None
+            if symbol in config.VOLATILE_TICKERS:
+                from utils import calculate_intraday_drop
+                intraday_drop_pct = calculate_intraday_drop(bars)
+                if intraday_drop_pct and abs(intraday_drop_pct) >= config.INTRADAY_DROP_THRESHOLD:
+                    intraday_multiplier = config.INTRADAY_MULTIPLIER
 
             # Get stock-specific dip threshold
             min_dip_threshold = config.get_dip_threshold(symbol)
@@ -459,6 +471,8 @@ class LittleDipper:
                 'threshold': min_dip_threshold,
                 'current_price': current_price,
                 'volatility_factor': volatility_factor,
+                'intraday_multiplier': intraday_multiplier,
+                'intraday_drop_pct': intraday_drop_pct,
                 'current_position_value': current_position_value,
                 'max_position_value': max_position_value
             }
@@ -491,6 +505,8 @@ class LittleDipper:
             dip_pct = opp['dip_pct']
             current_price = opp['current_price']
             volatility_factor = opp['volatility_factor']
+            intraday_multiplier = opp.get('intraday_multiplier', 1.0)
+            intraday_drop_pct = opp.get('intraday_drop_pct')
             current_position_value = opp['current_position_value']
             threshold = opp['threshold']
 
@@ -499,7 +515,8 @@ class LittleDipper:
                 dip_pct, current_price, equity, current_position_value,
                 config.BASE_POSITION_PCT, config.MAX_POSITION_PCT,
                 config.DIP_MULTIPLIER, fractional=True,
-                volatility_factor=volatility_factor
+                volatility_factor=volatility_factor,
+                intraday_multiplier=intraday_multiplier
             )
 
             if shares < 0.01:
@@ -529,7 +546,13 @@ class LittleDipper:
             # Place order!
             score = calculate_opportunity_score(dip_pct, threshold)
             log.info(f"💎 {symbol} BUY: {format_percent(dip_pct)} dip @ {format_money(current_price)} (score: {score:.2f}x)")
-            log.info(f"   📊 Filters: VolAdj {volatility_factor:.1f}x, Threshold: {format_percent(threshold)}")
+
+            # Show intraday drop if multiplier was applied
+            if intraday_multiplier > 1.0 and intraday_drop_pct:
+                log.info(f"   📊 Filters: VolAdj {volatility_factor:.1f}x, Threshold: {format_percent(threshold)}, Intraday: {format_percent(intraday_drop_pct)} → {intraday_multiplier:.1f}x size")
+            else:
+                log.info(f"   📊 Filters: VolAdj {volatility_factor:.1f}x, Threshold: {format_percent(threshold)}")
+
             self._place_order(symbol, shares, current_price, is_extended_hours)
             self._cycle_order_value += order_value
             return (True, 'executed')
