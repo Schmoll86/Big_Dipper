@@ -1,176 +1,329 @@
-# Little Dipper Deployment Guide
+# Big Dipper Deployment Guide
+
+## Core Principle
+
+**Python loads all code into memory at startup.** Changes to any `.py` file require a restart to take effect.
+
+---
 
 ## Docker Deployment (Recommended)
 
 ### Quick Start
 
 ```bash
-# Start the bot
+# Start
 docker-compose up -d
 
 # Check logs
-docker logs -f little-dipper
+docker logs -f big-dipper
 
-# Stop the bot
+# Stop
 docker-compose down
 
-# Restart (loads new config)
+# Restart (loads new config/code)
 docker-compose restart
 ```
 
-## How Code Changes Take Effect
+### How Restarts Work
 
-**Python loads all code into memory at startup.**
+- **Config changes** (`config.py`) - Restart required
+- **Code changes** (`main.py`, `dip_logic.py`, `utils.py`) - Restart required
+- **Environment changes** (`.env`) - Restart required
+- **Log rotation** - Happens automatically (see `docker-compose.yml`)
 
-Changes to `config.py`, `main.py`, or `dip_logic.py` do NOT affect running processes until you restart:
+---
 
-```bash
-docker-compose restart
-```
+## Remote Deployment Pattern
 
-## Remote Deployment (Mac Mini Setup)
+**Scenario:** Edit code on one machine, run on another.
 
-### One-Time Setup
+### One-Time Setup (Run Machine)
 
-1. **Enable SSH on Mac Mini:**
-   - System Preferences → Sharing → Remote Login → ON
-   - Note the hostname (e.g., `mac-mini.local`)
+1. **Enable SSH** (if applicable)
+2. **Install Docker**
+3. **Clone repository**
+4. **Create `.env` file** with Alpaca credentials
+5. **Start container:** `docker-compose up -d`
 
-2. **Install Docker on Mac Mini:**
-   ```bash
-   ssh schmoll@mac-mini.local
-   # Install Docker Desktop or via Homebrew
-   brew install docker docker-compose
-   ```
-
-3. **Clone repo on Mac Mini:**
-   ```bash
-   ssh schmoll@mac-mini.local
-   cd ~/Desktop
-   git clone <your-repo-url> Little_Dipper
-   cd Little_Dipper
-   ```
-
-4. **Set up .env:**
-   ```bash
-   cp .env.example .env
-   # Edit with your Alpaca credentials
-   nano .env
-   ```
-
-5. **Start the bot:**
-   ```bash
-   docker-compose up -d
-   ```
-
-### Daily Workflow (Edit on MacBook Air, Run on Mac Mini)
+### Daily Workflow
 
 ```bash
-# 1. Make changes on MacBook Air
+# 1. Edit code on development machine
 vim config.py
 
-# 2. Commit and push
+# 2. Commit and push to git
 git add -A
-git commit -m "Update config"
+git commit -m "Update thresholds"
 git push
 
-# 3. Deploy to Mac Mini
+# 3. Deploy to run machine
+# Option A: Use deployment script
 ./deploy.sh
-```
 
-The `deploy.sh` script will:
-- SSH into Mac Mini
-- Pull latest code
-- Restart Docker container
-- Show you the status
-
-### Manual Deployment
-
-```bash
-# SSH into Mac Mini
-ssh schmoll@mac-mini.local
-
-# Pull latest code
-cd ~/Desktop/Little_Dipper
+# Option B: Manual SSH
+ssh user@run-machine
+cd /path/to/Big_Dipper
 git pull
-
-# Restart container
 docker-compose restart
-
-# Check logs
-docker logs -f little-dipper
 ```
+
+---
+
+## Manual Configuration Changes
+
+**To modify trading parameters:**
+
+1. **Stop Big Dipper:**
+   ```bash
+   docker-compose down
+   # OR
+   pkill -f "main.py"
+   ```
+
+2. **Edit `config.py`:**
+   - Modify SYMBOLS list
+   - Adjust DIP_THRESHOLDS
+   - Change position sizing
+   - Update margin limits
+   - Etc.
+
+3. **Validate syntax:**
+   ```bash
+   python -m py_compile config.py
+   ```
+
+4. **Restart Big Dipper:**
+   ```bash
+   docker-compose up -d
+   # OR
+   ./start_big_dipper.sh
+   ```
+
+5. **Verify changes loaded:**
+   ```bash
+   # Check startup logs for symbol count, thresholds, etc.
+   docker logs big-dipper | head -20
+   ```
+
+---
 
 ## Monitoring
 
 ```bash
 # View live logs
-docker logs -f little-dipper
+docker logs -f big-dipper
 
-# View last 50 lines
-docker logs --tail 50 little-dipper
+# Last N lines
+docker logs --tail 50 big-dipper
 
-# Check container status
+# Container status
 docker ps | grep dipper
 
-# Check resource usage
-docker stats little-dipper
+# Resource usage
+docker stats big-dipper
 ```
+
+---
 
 ## Troubleshooting
 
-### Container won't start
-```bash
-# Check for errors
-docker logs little-dipper
+### Container Won't Start
 
-# Rebuild image
+```bash
+# Check error logs
+docker logs big-dipper
+
+# Rebuild from scratch
 docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
 ```
 
-### Config not updating
-1. Verify file saved correctly
-2. Ensure you restarted container: `docker-compose restart`
-3. Check for Python syntax errors: `python -m py_compile config.py`
+### Config Not Taking Effect
 
-### Multiple instances running
+**Common causes:**
+1. File not saved
+2. Forgot to restart
+3. Python syntax error
+
+**Fix:**
 ```bash
-# Should show only ONE container
-docker ps -a | grep dipper
+# Verify syntax
+python -m py_compile config.py
 
-# Remove duplicate containers
-docker rm -f little-dipper
+# Force restart
+docker-compose restart
+
+# Check logs for errors
+docker logs big-dipper | grep -i error
+```
+
+### Multiple Instances Running
+
+```bash
+# Find all instances
+docker ps -a | grep dipper
+pgrep -fl "main.py"
+
+# Stop all
+docker-compose down
+pkill -f "main.py"
+
+# Start fresh
 docker-compose up -d
 ```
 
-## Important Notes
+---
+
+## Important Warnings
 
 ### Trading Risks
-- **NEVER run multiple instances with same API keys**
-- Each instance will trade independently
-- Could exceed position limits or margin
+- ⚠️ **NEVER run multiple instances with same API keys**
+- Each instance trades independently
+- Can exceed position limits or margin
+- Can cause wash sale violations
 
 ### Security
-- Store API keys in `.env` file (not in code)
-- `.env` is in `.gitignore` (never commit keys)
+- Store API keys in `.env` file (never in code)
+- `.env` is in `.gitignore` (never commit)
+- Use Alpaca paper trading first to test
 - Keep Docker images updated
 
-### Logs
+### Log Management
 - Docker logs rotate automatically (see `docker-compose.yml`)
-- Max 10MB per file, 3 files retained
-- Logs cleared on container restart
+- Logs persist in volume/file (survives restart)
+- Monitor disk space if running long-term
 
-## Update Checklist
+---
+
+## Deployment Checklist
 
 When deploying changes:
 
-1. [ ] Stop bot (if running): `docker-compose down`
+1. [ ] Stop bot (if running)
 2. [ ] Make code/config changes
-3. [ ] Test locally if possible: `python main.py`
-4. [ ] Commit to git
-5. [ ] Push to remote
-6. [ ] Deploy to Mac Mini: `./deploy.sh`
-7. [ ] Verify new config loaded (check logs)
-8. [ ] Monitor first few trades
+3. [ ] Test syntax: `python -m py_compile *.py`
+4. [ ] Run unit tests: `python test_dip_logic.py`
+5. [ ] Commit to git
+6. [ ] Push to remote
+7. [ ] Deploy to run machine
+8. [ ] Verify changes loaded (check startup logs)
+9. [ ] Monitor first cycle for errors
+
+---
+
+## Version Control Strategy
+
+**Best practice:**
+- Keep config changes in separate commits
+- Use descriptive commit messages
+- Tag releases: `git tag v2.17 -m "Add intraday multiplier"`
+- Never commit `.env` file
+
+**Example workflow:**
+```bash
+# Adjust position sizing
+vim config.py
+git add config.py
+git commit -m "Increase base position to 3%"
+git push
+
+# Deploy
+ssh run-machine "cd /path/to/Big_Dipper && git pull && docker-compose restart"
+```
+
+---
+
+## Docker Compose Configuration
+
+**Key settings to understand:**
+
+```yaml
+services:
+  big-dipper:
+    restart: unless-stopped     # Auto-restart on crash
+    volumes:
+      - ./big_dipper.log:/app/big_dipper.log  # Log persistence
+    environment:
+      - ALPACA_KEY=${ALPACA_KEY}             # From .env
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}         # Default to INFO
+```
+
+**Restart policies:**
+- `no` - Never restart
+- `always` - Always restart (even on reboot)
+- `unless-stopped` - Restart unless manually stopped (recommended)
+- `on-failure` - Only restart on error
+
+---
+
+## Health Checks
+
+**Add to docker-compose.yml:**
+```yaml
+healthcheck:
+  test: ["CMD", "pgrep", "-f", "main.py"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 10s
+```
+
+**Check health:**
+```bash
+docker inspect big-dipper | grep Health -A 10
+```
+
+---
+
+## Performance Monitoring
+
+```bash
+# CPU/Memory usage
+docker stats big-dipper
+
+# Disk usage
+du -sh big_dipper.log
+
+# Container uptime
+docker ps --filter name=big-dipper --format "{{.Status}}"
+```
+
+---
+
+## Backup Strategy
+
+**What to backup:**
+- `config.py` - Your custom configuration
+- `.env` - API credentials (secure location)
+- `big_dipper.log` - Trading history
+- `web-monitor.db` - Historical data (if using web monitor)
+
+**Backup command:**
+```bash
+# Create timestamped backup
+tar -czf backup-$(date +%Y%m%d).tar.gz config.py .env big_dipper.log
+```
+
+---
+
+## Rolling Back Changes
+
+```bash
+# View recent commits
+git log --oneline -10
+
+# Roll back to previous commit
+git checkout <commit-hash> config.py
+
+# Restart with old config
+docker-compose restart
+
+# To undo rollback
+git checkout main config.py
+docker-compose restart
+```
+
+---
+
+**Focus:** This guide covers deployment mechanics and operational procedures. Specific configuration values (symbols, thresholds, sizing) are documented in [config.py](config.py) itself.
