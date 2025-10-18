@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Backend Flask API
+  monitor-backend:
+    build: ./backend
+    container_name: monitor-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount Big Dipper log file (read-only)
+      - ../big_dipper.log:/logs/big_dipper.log:ro
+      # Persistent database storage
+      - ./data:/data
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - ALPACA_KEY=${ALPACA_KEY}
+      - ALPACA_SECRET=${ALPACA_SECRET}
+      - ALPACA_PAPER=${ALPACA_PAPER:-true}
+    networks:
+      - monitor-net
+
+  # Frontend will be added here once React is set up
+  # monitor-frontend:
+  #   build: ./frontend
+  #   container_name: monitor-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:80"
+  #   depends_on:
+  #     - monitor-backend
+  #   networks:
+  #     - monitor-net
+
+networks:
+  monitor-net:
+    driver: bridge
+
+volumes:
+  monitor-data:
