@@ -1,82 +1,77 @@
 # 🌟 Big Dipper
 
-**Automated dip-buying with operational visibility**
+**Automated dip-buying with real-time web monitoring**
 
-[![GitHub](https://img.shields.io/badge/GitHub-Big_Dipper-blue?logo=github)](https://github.com/Schmoll86/Big_Dipper)
-[![Lines of Code](https://img.shields.io/badge/Lines-1293-brightgreen)]()
+[![Lines of Code](https://img.shields.io/badge/Lines-~730-brightgreen)]()
 [![Files](https://img.shields.io/badge/Files-4-blue)]()
 [![Dependencies](https://img.shields.io/badge/Dependencies-3-green)]()
 
-Built on proven "buy the dip" logic with 5 smart risk filters. Enhanced with comprehensive logging to show what you're missing during trading halts.
+Automatically buys quality stocks when they dip from recent highs, with intelligent risk management and live dashboard.
 
 ## What It Does
 
-Automatically buys quality stocks when they dip 5-8% from recent highs, with intelligent risk management and full transparency.
-
 **Every 60 seconds:**
-1. Checks market status (4 AM - 8 PM ET)
-2. Scans 44 stocks for qualifying dips
-3. Applies 5 risk filters (crash, volume, momentum, volatility, cooldown)
-4. Prioritizes best opportunities
-5. Executes trades (if margin allows)
-6. **NEW:** Shows missed opportunities when trading halted
+1. Scans 44 stocks for 5-8% dips from 20-day highs
+2. Applies smart risk filters (volatility, cooldown, leverage limits)
+3. Prioritizes best opportunities
+4. Executes limit orders (if buying power allows)
+5. Logs all decisions transparently
+
+**Web Monitor (port 3000):**
+- Real-time account status, positions, P&L
+- Live trade feed with color-coded entries
+- Opportunity radar showing current dips
+- Historical equity chart (1D/1W/1M/3M/1Y)
 
 ## Key Features
 
 ### Smart Risk Management
 - **5% absolute minimum dip** - No threshold gaming
 - **Stock-specific thresholds** - 3-8% based on volatility
-- **Crash filter** - Skip if down >15% from high
-- **Volume confirmation** - Require 80%+ average volume
-- **Relative strength** - Skip if 5-day momentum < -10%
 - **Volatility adjustment** - Smaller positions for high-vol stocks
-- **Dynamic cooldown** - Halve cooldown for deep dips >7%
-- **Intraday boost** - Buy 1.5x on volatile tickers with 6%+ intraday drop
+- **Dynamic cooldown** - Halve cooldown (3h → 1.5h) for deep dips >7%
+- **Intraday boost** - Buy 1.5x on volatile tickers (IBIT, ARKK, etc.) with 6%+ intraday drop
 
-### Dual Margin Protection
-- **Emergency brake at 15%** - Halts ALL trading
-- **Hard limit at 20%** - Blocks individual trades
-- **v2.16 enhancement:** Shows which dips you're missing during brake
+### Leverage Protection (v2.18 Fix)
+- **Emergency brake at 115%** - Halts ALL trading if positions > 115% of equity
+- **Hard limit at 120%** - Blocks individual trades that would exceed 120% leverage
+- **Real-time monitoring** - Web dashboard shows current leverage vs limits
 
-### Operational Visibility
-- **Transparent halts** - Know why trading stopped
-- **Missed opportunity logging** - See what you couldn't buy
-- **Capital exhaustion alerts** - Clear guidance when funds depleted
-- **DEBUG mode** - Detailed scanning for every symbol
-
-## Results
-
-**Risk Reduction:**
-- ~30-40% fewer false signals vs naive dip-buying
-- ~20-30% lower expected drawdowns
-- No prolonged crash exposure (15% circuit breaker)
-
-**System Reliability:**
-- 99%+ uptime (fail-fast + auto-restart)
-- <6 second cycle time
-- Stateless (crash = restart from Alpaca state)
+### Web Monitor (v2.17+)
+- **Live dashboard** - Account status, positions, real-time P&L
+- **Trade feed** - Recent trades with entry prices, sizes, results
+- **Opportunity radar** - Current qualifying dips with scores
+- **Equity chart** - Historical performance over 1D/1W/1M/3M/1Y
+- **React + TypeScript** - Fast, modern UI with Framer Motion animations
 
 ## Architecture
 
+### Core Bot (~730 lines)
 ```
-1,275 lines across 4 files
-├── config.py (105 lines) - Constants, thresholds, symbols
-├── dip_logic.py (194 lines) - Pure trading logic functions
-├── utils.py (320 lines) - Data fetching, formatting, visibility
-└── main.py (656 lines) - Event loop, Alpaca SDK, orchestration
+├── config.py (~105 lines) - Constants, thresholds, symbols
+├── dip_logic.py (~195 lines) - Pure trading logic functions
+├── utils.py (~280 lines) - Data fetching, formatting
+└── main.py (~730 lines) - Event loop, Alpaca SDK, orchestration
+```
+
+### Web Monitor
+```
+├── backend/app.py - Flask API serving Alpaca data + SQLite history
+├── frontend/ - React + TypeScript dashboard (5s polling)
+└── data/monitor.db - SQLite for historical snapshots
 ```
 
 **Principles:**
-- No database (Alpaca API = single source of truth)
-- No caching (stateless operation)
-- Pure functions (easy testing)
-- Fail-fast errors (Docker restarts)
-- 3 dependencies only
+- Stateless bot (Alpaca = single source of truth, crash = safe restart)
+- Pure functions (no side effects, easy testing)
+- Fail-fast errors (log and halt vs silent failures)
+- Minimal dependencies (3 for bot, standard web stack for monitor)
 
 ## Quick Start
 
 ### Prerequisites
 - Python 3.9+
+- Node.js 16+ (for web monitor)
 - Alpaca account (paper or live)
 - API keys with trading permissions
 
@@ -87,11 +82,9 @@ Automatically buys quality stocks when they dip 5-8% from recent highs, with int
 git clone https://github.com/Schmoll86/Big_Dipper.git
 cd Big_Dipper
 
-# Create virtual environment
+# Setup bot
 python3 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 
 # Configure
@@ -101,8 +94,14 @@ cp .env.example .env
 # Test
 python test_dip_logic.py
 
-# Run
+# Run bot
 ./start_big_dipper.sh
+
+# Run web monitor (separate terminal)
+cd web-monitor
+./start_monitor.sh
+# Frontend: http://localhost:3000
+# Backend: http://localhost:5001
 ```
 
 ### Configuration
@@ -111,8 +110,9 @@ Edit [config.py](config.py) for:
 - **Symbols** - 44 stocks across tech, utilities, defense, materials
 - **Thresholds** - Stock-specific dip triggers (3-8%)
 - **Position sizing** - 2.5% base, 15% max per symbol
-- **Margin settings** - 15% brake, 20% hard limit
-- **Cooldowns** - 3 hours between buys per symbol
+- **Leverage limits** - 115% emergency brake, 120% hard limit
+- **Cooldowns** - 3 hours between buys (1.5h for deep dips)
+- **Extended hours** - Enabled (4 AM - 8 PM ET)
 
 All settings in code, not docs (single source of truth).
 
@@ -121,13 +121,8 @@ All settings in code, not docs (single source of truth).
 ### Dip Detection
 Uses **BID price** (conservative) to calculate dip from 20-day high:
 ```python
-current_price = quote.bid_price
 dip_pct = (current_price - lookback_high) / lookback_high
-
-# Must meet BOTH:
-# 1. 5% absolute minimum (prevents gaming)
-# 2. Stock-specific threshold (3-8%)
-effective_threshold = max(5%, stock_threshold)
+effective_threshold = max(5%, stock_threshold)  # Floor + custom threshold
 ```
 
 ### Position Sizing
@@ -138,11 +133,20 @@ target_value = equity × 2.5% × size_multiplier
 # Capped at 15% of equity per symbol
 ```
 
+### Leverage Limits (v2.18 Fix)
+```python
+leverage_ratio = total_position_value / equity
+emergency_brake = 1.15  # 115% of equity
+hard_limit = 1.20       # 120% of equity
+
+# Before each trade:
+if projected_leverage > hard_limit:
+    skip_trade()
+```
+
 ### Order Execution
 - **Limit orders only** (no market orders)
-- **Adaptive pricing:**
-  - Extended hours: bid + 0.1%
-  - Regular hours: ask - 0.5%
+- **Adaptive pricing:** Extended hours: bid + 0.5%, Regular: ask - 0.5%
 - **15-minute timeout** (cancels if unfilled)
 
 ## Symbols Traded (44)
@@ -159,6 +163,14 @@ Edit SYMBOLS list in [config.py](config.py) to customize.
 
 ## Monitoring
 
+### Web Dashboard (Recommended)
+```bash
+cd web-monitor
+./start_monitor.sh
+# Open http://localhost:3000
+```
+
+### Command Line
 ```bash
 # Check if running
 pgrep -fl "main.py"
@@ -166,25 +178,13 @@ pgrep -fl "main.py"
 # View logs
 tail -f big_dipper.log
 
-# Check positions/margin
-python check_positions.py
-
 # Enable verbose logging
 # Edit .env: LOG_LEVEL=DEBUG
 ```
 
-### Log Levels
-
-**INFO** (default):
-- Trades executed
-- Emergency brake status
-- Major events
-
-**DEBUG** (verbose):
-- Every symbol check
-- Rejection reasons
-- Dip calculations
-- Missed opportunities
+**Log Levels:**
+- **INFO** (default): Trades, emergency brake, major events
+- **DEBUG** (verbose): Every symbol check, rejection reasons, dip calculations
 
 ## Options & Manual Trading
 
@@ -200,40 +200,26 @@ python check_positions.py
 
 ## Extended Hours
 
-Trades 4 AM - 8 PM ET (all symbols):
+Trades 4 AM - 8 PM ET:
 - Pre-market: 4:00 AM - 9:30 AM
 - Regular: 9:30 AM - 4:00 PM
 - After-hours: 4:00 PM - 8:00 PM
 
-## Emergency Brake (v2.16 Enhanced)
+## Emergency Brake (v2.18)
 
-**When margin >15%:**
-- ✅ Halts ALL trading
-- ✅ **NEW:** Logs missed opportunities
-- ✅ Shows how much debt to reduce
-- ✅ Auto-resumes when margin drops <15%
-
-**Example log:**
+**When leverage >115%:**
 ```
-🛑 EMERGENCY BRAKE: Margin at 15.73%
-   Margin debt: $5,480 / Equity: $34,848
-   💡 Reduce debt by $254 to resume trading
-   📊 Missed opportunities:
-   • NVDA: -6.2% dip @ $142.50 (would buy $2,800)
-   • AMD: -5.8% dip @ $155.00 (would buy $2,400)
+🛑 EMERGENCY BRAKE: Leverage at 117.3%
+   Position value: $40,950 / Equity: $34,900
+   💡 Reduce positions by $804 to resume trading
+   📊 Missed opportunities (would have bought):
+   • NVDA: -6.2% dip @ $142.50 ($2,800)
+   • AMD: -5.8% dip @ $155.00 ($2,400)
 ```
 
-## File Size Limits
-
-| File | Lines | Max | Status |
-|------|-------|-----|--------|
-| config.py | 108 | 100 | ⚠️ Over by 8 |
-| dip_logic.py | 198 | 250 | ✅ 52 available |
-| utils.py | 276 | 250 | ⚠️ Over by 26 |
-| main.py | 711 | 700 | ⚠️ Over by 11 |
-| **Total** | **1,293** | **1,300** | **7 to ceiling** |
-
-**At 1,300 lines:** Feature-complete. No more additions.
+- Halts ALL trading until leverage drops below 115%
+- Logs missed opportunities for visibility
+- Auto-resumes when safe to trade
 
 ## Development
 
@@ -270,16 +256,19 @@ docker logs -f big-dipper
 
 ## Dependencies
 
-Only 3 packages (keep it minimal):
+**Bot (3 packages):**
 - `alpaca-py` - Official Alpaca SDK
 - `python-dotenv` - Environment variables
 - `pytz` - Timezone handling
 
+**Web Monitor:**
+- Backend: Flask, alpaca-py, SQLite
+- Frontend: React, TypeScript, Framer Motion
+
 ## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** - Development guide, architecture, trading logic
-- **[SETUP_COMPLETE.md](SETUP_COMPLETE.md)** - Initial setup reference
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
+- **[CLAUDE.md](CLAUDE.md)** - Developer guide, architecture, critical fixes
+- **[web-monitor/README.md](web-monitor/README.md)** - Web monitor setup guide
 
 ## Philosophy
 
