@@ -33,7 +33,10 @@ data_client = StockHistoricalDataClient(
     os.getenv('ALPACA_SECRET')
 )
 # Database setup
-DB_PATH = '../data/monitor.db'
+# Use absolute path to avoid working directory issues
+import os as _os
+_BASE_DIR = _os.path.dirname(_os.path.abspath(__file__))
+DB_PATH = _os.path.join(_BASE_DIR, '..', 'data', 'monitor.db')
 
 def init_db():
     """Initialize SQLite database with tables"""
