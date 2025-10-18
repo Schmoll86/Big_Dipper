@@ -54,7 +54,7 @@ class Config:
     MIN_ABSOLUTE_DIP: float = 0.05  # 5% floor (prevents threshold gaming)
 
     # ===== RISK LIMITS =====
-    MAX_TOTAL_POSITIONS: int = 10
+    MAX_TOTAL_POSITIONS: int = 20  # Temporary - will reduce to 10 after testing
 
     # ===== MARGIN SETTINGS =====
     USE_MARGIN: bool = True

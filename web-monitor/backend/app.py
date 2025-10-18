@@ -205,11 +205,20 @@ def dashboard():
             'day_pl_percent': 0.0
         }
         
-        # Calculate margin usage
+        # Calculate leverage (positions as % of equity)
+        # This matches Big Dipper's Option B: positions ≤ 120% of equity
         if float(account.equity) > 0:
-            margin_debt = float(account.equity) - float(account.cash)
-            if margin_debt > 0:
-                account_data['margin_used'] = (margin_debt / float(account.equity)) * 100
+            # Get total position value
+            total_position_value = sum(float(p.market_value) for p in positions)
+            leverage_ratio = (total_position_value / float(account.equity)) * 100
+            account_data['leverage_pct'] = leverage_ratio
+
+            # Also calculate actual margin debt for visibility
+            margin_debt = max(0, float(account.cash) + total_position_value - float(account.equity))
+            account_data['margin_debt'] = margin_debt
+
+            # Keep old field for backwards compatibility (but now shows leverage)
+            account_data['margin_used'] = leverage_ratio
         
         # Calculate day P/L percentage
         if hasattr(account, 'last_equity') and float(account.last_equity) > 0:

@@ -150,62 +150,14 @@ class LittleDipper:
                 equity = float(account.equity)
                 cash = float(account.cash)
 
-                # Calculate margin status (with negative equity protection)
+                # Equity sanity check
                 if equity <= 0:
                     log.error(f"❌ CRITICAL: Account equity is ${equity:.2f} (≤ 0) - halting trading")
                     return False
 
-                # Calculate actual margin debt (negative cash = borrowed funds)
-                # Note: maintenance_margin is collateral requirement, NOT actual debt
-                margin_debt = max(0, -cash)
-                margin_ratio = margin_debt / equity if equity > 0 else 0
-
-                # SAFETY CHECK: If already near margin limit at cycle START, skip all trading
-                # This prevents adding margin on top of existing margin debt
-                if config.USE_MARGIN and margin_ratio > config.MARGIN_SAFETY_THRESHOLD:
-                    # Increment brake counter
-                    self._brake_cycle_count += 1
-
-                    # Scan for opportunities every 10 cycles (10 minutes)
-                    # Stop scanning after 30 cycles (30 minutes) to prevent log spam
-                    missed_opps = []
-                    if 10 <= self._brake_cycle_count <= 30 and self._brake_cycle_count % 10 == 0:
-                        log.info("📊 Scanning for missed opportunities (brake persists)...")
-                        missed_opps = scan_opportunities_during_brake(
-                            symbols_to_trade,
-                            self.data,
-                            config.LOOKBACK_DAYS,
-                            config.MIN_ABSOLUTE_DIP,
-                            config.get_dip_threshold
-                        )
-
-                    # Log comprehensive brake status
-                    log_brake_status(
-                        margin_ratio,
-                        margin_debt,
-                        equity,
-                        config.MARGIN_SAFETY_THRESHOLD,
-                        missed_opps,
-                        self._brake_cycle_count
-                    )
-
-                    log.error(f"   HALTING ALL TRADING this cycle")
-                    time.sleep(config.SCAN_INTERVAL_SEC)
-                    continue
-                else:
-                    # Reset brake counter when margin healthy
-                    self._brake_cycle_count = 0
-
-                if config.USE_MARGIN:
-                    log.info(f"💰 Account: {format_money(equity)} equity, "
-                            f"{format_money(cash)} cash, "
-                            f"Margin: {format_percent(margin_ratio)}/{format_percent(config.MAX_MARGIN_PCT)}")
-
-                    if margin_ratio > config.MAX_MARGIN_PCT - 0.05:
-                        log.warning(f"⚠️  APPROACHING MARGIN LIMIT")
-                else:
-                    log.info(f"💰 Account: {format_money(equity)} equity, "
-                            f"{format_money(cash)} cash ({format_percent(cash/equity)})")
+                # NOTE: Leverage calculation happens AFTER getting positions
+                # We need position value to calculate leverage ratio
+                # See lines 255-299 for leverage checks
 
                 # 3. Get current positions (fresh from Alpaca)
                 # Filter to equity positions only (exclude options/crypto if present)
@@ -252,6 +204,52 @@ class LittleDipper:
                                           if p.symbol not in config.COLLATERAL_POSITIONS]
                     position_map = {p.symbol: float(p.market_value) for p in tradeable_positions}
 
+                    # Calculate leverage ratio (Option B: position value / equity)
+                    # This tells us what % of equity is invested in positions
+                    # With margin, this can exceed 100%
+                    total_position_value = sum(float(p.market_value) for p in equity_positions)
+                    leverage_ratio = total_position_value / equity if equity > 0 else 0
+
+                    # Calculate actual margin debt (how much borrowed)
+                    # Formula: margin_debt = cash + positions - equity
+                    margin_debt = max(0, cash + total_position_value - equity)
+
+                    # SAFETY CHECK: Emergency brake if leverage > 115% of equity
+                    # This prevents excessive leverage before individual trades
+                    if config.USE_MARGIN and leverage_ratio > (1.0 + config.MARGIN_SAFETY_THRESHOLD):
+                        # Increment brake counter
+                        self._brake_cycle_count += 1
+
+                        # Scan for opportunities every 10 cycles (10 minutes)
+                        missed_opps = []
+                        if 10 <= self._brake_cycle_count <= 30 and self._brake_cycle_count % 10 == 0:
+                            log.info("📊 Scanning for missed opportunities (brake persists)...")
+                            missed_opps = scan_opportunities_during_brake(
+                                symbols_to_trade,
+                                self.data,
+                                config.LOOKBACK_DAYS,
+                                config.MIN_ABSOLUTE_DIP,
+                                config.get_dip_threshold
+                            )
+
+                        # Log comprehensive brake status
+                        log.info(f"⚠️  EMERGENCY BRAKE: Leverage {leverage_ratio:.1%} > {1.0 + config.MARGIN_SAFETY_THRESHOLD:.1%}")
+                        log.info(f"   Position value: {format_money(total_position_value)} ({leverage_ratio:.1%} of equity)")
+                        log.info(f"   Limit: {format_money(equity * (1.0 + config.MARGIN_SAFETY_THRESHOLD))} (115% of equity)")
+                        log.info(f"   Must reduce positions by {format_money(total_position_value - equity * (1.0 + config.MARGIN_SAFETY_THRESHOLD))}")
+
+                        if missed_opps:
+                            log.info(f"   Missed {len(missed_opps)} opportunities during brake:")
+                            for opp in missed_opps[:5]:  # Show top 5
+                                log.info(f"      {opp['symbol']}: {opp['dip_pct']:.1%} dip, score {opp['score']:.2f}")
+
+                        log.error(f"   HALTING ALL TRADING this cycle")
+                        time.sleep(config.SCAN_INTERVAL_SEC)
+                        continue
+                    else:
+                        # Reset brake counter when leverage healthy
+                        self._brake_cycle_count = 0
+
                 except Exception as e:
                     # Catch-all for any other position-related errors
                     log.error(f"❌ UNEXPECTED ERROR getting positions: {e}")
@@ -276,8 +274,8 @@ class LittleDipper:
                     log.info(f"📊 Positions: {len(tradeable_positions)} stocks, "
                             f"{format_money(total_invested)} invested "
                             f"({format_percent(total_invested/equity)})")
-                    log.info(f"[ACCOUNT] equity=${equity:.2f} cash=${cash:.2f} margin={margin_ratio:.2%} "
-                            f"pl=${total_pl:+.2f} pl_pct={total_pl_pct:+.2f}%")
+                    log.info(f"[ACCOUNT] equity=${equity:.2f} cash=${cash:.2f} leverage={leverage_ratio:.1%} "
+                            f"margin_debt=${margin_debt:.2f} pl=${total_pl:+.2f} pl_pct={total_pl_pct:+.2f}%")
 
                     # Log top winners and losers for visibility
                     if winners:
@@ -288,7 +286,9 @@ class LittleDipper:
                         log.info(f"   Losers: {', '.join([f'{s} {p:.1f}%' for s, d, p in top_losers])}")
                 else:
                     log.info(f"📊 Positions: None")
-                    log.info(f"[ACCOUNT] equity=${equity:.2f} cash=${cash:.2f} margin={margin_ratio:.2%}")
+                    leverage_ratio = 0.0
+                    margin_debt = 0.0
+                    log.info(f"[ACCOUNT] equity=${equity:.2f} cash=${cash:.2f} leverage={leverage_ratio:.1%}")
 
                 # Log margin debt if using margin (removed misleading diagnostics)
 
@@ -550,16 +550,21 @@ class LittleDipper:
 
             order_value = shares * current_price
 
-            # Check margin limits
+            # Check leverage limits (Option B: positions ≤ 120% of equity)
             if config.USE_MARGIN:
-                projected_cash = cash - self._cycle_order_value - order_value
-                margin_debt = max(0, -projected_cash)
-                projected_ratio = margin_debt / equity if equity > 0 else 0
+                # Calculate projected position value after this order
+                # position_map is {symbol: market_value}
+                current_position_value = sum(position_map.values()) if position_map else 0
+                projected_position_value = current_position_value + self._cycle_order_value + order_value
+                projected_leverage = projected_position_value / equity if equity > 0 else 0
+                max_leverage = 1.0 + config.MAX_MARGIN_PCT  # 1.2 = 120%
 
-                if projected_ratio > config.MAX_MARGIN_PCT:
-                    log.warning(f"{symbol}: Would exceed margin limit "
-                               f"({format_percent(projected_ratio)} > {format_percent(config.MAX_MARGIN_PCT)})")
+                if projected_leverage > max_leverage:
+                    log.warning(f"{symbol}: Would exceed leverage limit "
+                               f"({projected_leverage:.1%} > {max_leverage:.1%})")
+                    log.debug(f"  Current positions: {format_money(current_position_value)} ({current_position_value/equity:.1%})")
                     log.debug(f"  Pending this cycle: {format_money(self._cycle_order_value)}")
+                    log.debug(f"  This order: {format_money(order_value)}")
                     return (False, 'capital')
 
                 buying_power = float(account.regt_buying_power)
