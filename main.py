@@ -35,6 +35,7 @@ from alpaca.data.requests import (
 )
 from alpaca.trading.requests import LimitOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.common.exceptions import APIError
 
 from config import config
 from dip_logic import (
@@ -261,11 +262,33 @@ class LittleDipper:
 
                 if tradeable_positions:
                     total_invested = sum(position_map.values())
+
+                    # Calculate P/L from Alpaca data (accurate, no manual calculation)
+                    total_pl = sum(float(p.unrealized_pl) for p in tradeable_positions)
+                    total_pl_pct = (total_pl / equity) * 100 if equity > 0 else 0
+
+                    # Identify winners and losers
+                    winners = [(p.symbol, float(p.unrealized_pl), float(p.unrealized_plpc) * 100)
+                               for p in tradeable_positions if float(p.unrealized_plpc) > 0.005]
+                    losers = [(p.symbol, float(p.unrealized_pl), float(p.unrealized_plpc) * 100)
+                              for p in tradeable_positions if float(p.unrealized_plpc) < -0.005]
+
                     log.info(f"📊 Positions: {len(tradeable_positions)} stocks, "
                             f"{format_money(total_invested)} invested "
                             f"({format_percent(total_invested/equity)})")
+                    log.info(f"[ACCOUNT] equity=${equity:.2f} cash=${cash:.2f} margin={margin_ratio:.2%} "
+                            f"pl=${total_pl:+.2f} pl_pct={total_pl_pct:+.2f}%")
+
+                    # Log top winners and losers for visibility
+                    if winners:
+                        top_winners = sorted(winners, key=lambda x: x[2], reverse=True)[:3]
+                        log.info(f"   Winners: {', '.join([f'{s} {p:+.1f}%' for s, d, p in top_winners])}")
+                    if losers:
+                        top_losers = sorted(losers, key=lambda x: x[2])[:3]
+                        log.info(f"   Losers: {', '.join([f'{s} {p:.1f}%' for s, d, p in top_losers])}")
                 else:
                     log.info(f"📊 Positions: None")
+                    log.info(f"[ACCOUNT] equity=${equity:.2f} cash=${cash:.2f} margin={margin_ratio:.2%}")
 
                 # Log margin debt if using margin (removed misleading diagnostics)
 
@@ -461,10 +484,12 @@ class LittleDipper:
             )
 
             if not should:
-                log.debug(f"{symbol}: {reason}")
+                log.debug(f"[SKIP] {symbol} {reason}")
                 return None
 
-            # Qualifies! Return opportunity data for prioritization
+            # Qualifies! Log and return opportunity data for prioritization
+            score = calculate_opportunity_score(dip_pct, min_dip_threshold)
+            log.debug(f"[OPPORTUNITY] {symbol} {dip_pct:.2%} @ ${current_price:.2f} score={score:.2f}x QUALIFIED")
             return {
                 'symbol': symbol,
                 'dip_pct': dip_pct,
@@ -613,9 +638,19 @@ class LittleDipper:
             self._recent_trades[symbol] = time.time()  # Local cache backup
 
             order_value = shares * limit_price
-            log.info(f"✅ BUY {symbol}: {shares:.4f} shares @ {format_money(limit_price)} "
+            log.info(f"[TRADE] BUY {symbol}: {shares:.4f} shares @ {format_money(limit_price)} "
                     f"= {format_money(order_value)} (order {order.id})")
 
+        except APIError as e:
+            # Wash sale protection - graceful handling for stop loss conflicts
+            error_msg = str(e)
+            if "40310000" in error_msg or "wash trade" in error_msg.lower():
+                log.warning(f"[SKIP] {symbol} wash_sale_conflict (opposite order exists)")
+            # Fractional share issue
+            elif "not fractionable" in error_msg.lower():
+                log.warning(f"[SKIP] {symbol} not_fractionable (use whole shares)")
+            else:
+                log.error(f"❌ Failed to place order for {symbol}: {e}")
         except Exception as e:
             log.error(f"❌ Failed to place order for {symbol}: {e}")
 

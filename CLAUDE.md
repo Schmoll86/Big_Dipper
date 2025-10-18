@@ -7,7 +7,7 @@
 **Smart risk management with transparency.** Buy quality stocks when they dip, with visibility into what you're missing during trading halts.
 
 ```
-~1,275 lines of Python across 4 files
+~1,293 lines of Python across 4 files
 Simple > Complex | Stateless > Stateful | Visible > Silent
 Direct SDK usage | Pure functions | No database | Fail-fast errors
 ```
@@ -15,16 +15,16 @@ Direct SDK usage | Pure functions | No database | Fail-fast errors
 ## Architecture
 
 ```
-config.py (105 lines)
+config.py (108 lines)
   ↓ Constants, thresholds, symbol list
 
-dip_logic.py (194 lines)
+dip_logic.py (198 lines)
   ↓ Pure trading logic functions (no side effects)
 
-utils.py (320 lines)
+utils.py (276 lines)
   ↓ Data fetching, formatting, visibility helpers
 
-main.py (656 lines)
+main.py (711 lines)
   ↓ Event loop, Alpaca SDK, orchestration
 ```
 
@@ -198,11 +198,11 @@ if projected_margin > 0.20:
 
 | File | Current | Max | Notes |
 |------|---------|-----|-------|
-| config.py | 105 | 100 | ⚠️ At limit |
-| dip_logic.py | 194 | 250 | 56 lines available |
-| utils.py | 320 | 250 | ⚠️ Over by 70 (refactor if adding) |
-| main.py | 656 | 700 | 44 lines available |
-| **Total** | **1,275** | **1,300** | **25 lines to ceiling** |
+| config.py | 108 | 100 | ⚠️ Over by 8 |
+| dip_logic.py | 198 | 250 | 52 lines available |
+| utils.py | 276 | 250 | ⚠️ Over by 26 |
+| main.py | 711 | 700 | ⚠️ Over by 11 |
+| **Total** | **1,293** | **1,300** | **7 lines to ceiling** |
 
 **At 1,300 lines:** Big Dipper is feature-complete. No more additions.
 

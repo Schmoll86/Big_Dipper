@@ -3,7 +3,7 @@
 **Automated dip-buying with operational visibility**
 
 [![GitHub](https://img.shields.io/badge/GitHub-Big_Dipper-blue?logo=github)](https://github.com/Schmoll86/Big_Dipper)
-[![Lines of Code](https://img.shields.io/badge/Lines-1275-brightgreen)]()
+[![Lines of Code](https://img.shields.io/badge/Lines-1293-brightgreen)]()
 [![Files](https://img.shields.io/badge/Files-4-blue)]()
 [![Dependencies](https://img.shields.io/badge/Dependencies-3-green)]()
 
@@ -227,11 +227,11 @@ Trades 4 AM - 8 PM ET (all symbols):
 
 | File | Lines | Max | Status |
 |------|-------|-----|--------|
-| config.py | 105 | 100 | ⚠️ At limit |
-| dip_logic.py | 194 | 250 | ✅ 56 available |
-| utils.py | 320 | 250 | ⚠️ Over by 70 |
-| main.py | 656 | 700 | ✅ 44 available |
-| **Total** | **1,275** | **1,300** | **25 to ceiling** |
+| config.py | 108 | 100 | ⚠️ Over by 8 |
+| dip_logic.py | 198 | 250 | ✅ 52 available |
+| utils.py | 276 | 250 | ⚠️ Over by 26 |
+| main.py | 711 | 700 | ⚠️ Over by 11 |
+| **Total** | **1,293** | **1,300** | **7 to ceiling** |
 
 **At 1,300 lines:** Feature-complete. No more additions.
 

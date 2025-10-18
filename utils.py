@@ -189,8 +189,8 @@ def log_brake_status(
     target_debt = equity * target_threshold
     reduction_needed = max(0, margin_debt - target_debt)
 
-    # Log brake status
-    log.error(f"🛑 EMERGENCY BRAKE (cycle {brake_cycle_count}): "
+    # Log brake status with structured tag for web monitor
+    log.error(f"[BRAKE] 🛑 EMERGENCY BRAKE (cycle {brake_cycle_count}): "
              f"Margin at {format_percent(margin_ratio)}")
     log.error(f"   Margin debt: {format_money(margin_debt)} / "
              f"Equity: {format_money(equity)}")
